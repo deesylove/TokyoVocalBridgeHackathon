@@ -301,15 +301,36 @@
       border-radius: 999px;
     }
     #micBtn {
-      background: #22c55e;
+      background: linear-gradient(135deg, #e11d48, #f97316);
       color: white;
       border-radius: 999px;
-      width: 48px; height: 48px;
+      width: 56px; height: 56px;
       padding: 0;
       font-size: 1.2rem;
       display: none;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 20px rgba(249,115,22,.3), 0 0 40px rgba(225,29,72,.15);
+      animation: mic-breathe 2.5s ease-in-out infinite;
     }
-    #micBtn.muted { background: #ef4444; }
+    #micBtn img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      border-radius: 999px;
+      transition: filter .2s;
+    }
+    #micBtn.muted {
+      background: #334155;
+      box-shadow: none;
+      animation: none;
+    }
+    #micBtn.muted img {
+      filter: grayscale(1) brightness(.5);
+    }
+    @keyframes mic-breathe {
+      0%, 100% { box-shadow: 0 0 20px rgba(249,115,22,.3), 0 0 40px rgba(225,29,72,.15); transform: scale(1); }
+      50% { box-shadow: 0 0 30px rgba(249,115,22,.45), 0 0 60px rgba(225,29,72,.25); transform: scale(1.05); }
+    }
     #disconnectBtn {
       background: #334155;
       color: #94a3b8;
@@ -374,6 +395,83 @@
       font-size: .85rem;
     }
 
+    /* === INTRO OVERLAY === */
+    .intro-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity .8s ease, visibility .8s ease;
+    }
+    .intro-overlay.fade-out {
+      opacity: 0;
+      visibility: hidden;
+    }
+    .intro-logo {
+      width: 180px;
+      height: 180px;
+      border-radius: 24px;
+      object-fit: cover;
+      box-shadow: 0 0 80px rgba(249,115,22,.25), 0 0 160px rgba(225,29,72,.15);
+      transition: transform 1s cubic-bezier(.4,0,.2,1), box-shadow 1s ease;
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+    .intro-overlay.zoom-out .intro-logo {
+      transform: scale(0.2);
+      box-shadow: none;
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 60px rgba(249,115,22,.2), 0 0 120px rgba(225,29,72,.1); }
+      50% { box-shadow: 0 0 100px rgba(249,115,22,.35), 0 0 200px rgba(225,29,72,.2); }
+    }
+    .intro-title {
+      margin-top: 1.5rem;
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #e11d48, #f97316);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      opacity: 1;
+      transition: opacity .5s ease;
+    }
+    .intro-subtitle {
+      margin-top: .5rem;
+      font-size: .95rem;
+      color: #64748b;
+      opacity: 1;
+      transition: opacity .5s ease;
+    }
+    .intro-status {
+      margin-top: 1.5rem;
+      font-size: .85rem;
+      color: #f59e0b;
+      opacity: 1;
+      transition: opacity .5s ease;
+    }
+    .intro-status .dot {
+      display: inline-block;
+      animation: blink 1.2s steps(1) infinite;
+    }
+    .intro-status .dot:nth-child(2) { animation-delay: .2s; }
+    .intro-status .dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .intro-overlay.zoom-out .intro-title,
+    .intro-overlay.zoom-out .intro-subtitle,
+    .intro-overlay.zoom-out .intro-status {
+      opacity: 0;
+    }
+
+    /* Hide main app until intro is done */
+    .app { opacity: 0; transition: opacity .6s ease .3s; }
+    .app.visible { opacity: 1; }
+
     /* Mobile: stack vertically */
     @media (max-width: 860px) {
       .app {
@@ -390,7 +488,15 @@
 </head>
 <body>
 
-<div class="app">
+<!-- INTRO OVERLAY -->
+<div class="intro-overlay" id="introOverlay">
+  <img src="/static/logo.png" alt="Jizo" class="intro-logo">
+  <div class="intro-title">Jizo 地蔵</div>
+  <div class="intro-subtitle">Your guardian guide to life in Japan</div>
+  <div class="intro-status" id="introStatus">Connecting<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+</div>
+
+<div class="app" id="mainApp">
   <!-- HEADER -->
   <header>
     <div style="display:flex;align-items:center;gap:.75rem">
@@ -417,7 +523,7 @@
   <div class="voice-panel">
     <div class="voice-controls">
       <button id="connectBtn" onclick="toggleConnection()">Start Talking</button>
-      <button id="micBtn" onclick="toggleMic()" title="Toggle microphone"></button>
+      <button id="micBtn" onclick="toggleMic()" title="Toggle microphone"><img src="/static/logo.png" alt="Jizo"></button>
       <button id="disconnectBtn" onclick="disconnect()">End Call</button>
     </div>
 
@@ -806,6 +912,8 @@ const { Room, RoomEvent, Track, ConnectionState } = LivekitClient;
 let room = null;
 let micEnabled = false;
 let connected = false;
+let introFinished = false;
+let firstAgentMessage = false;
 
 const statusEl = document.getElementById('status');
 const connectBtn = document.getElementById('connectBtn');
@@ -839,8 +947,8 @@ function escapeHtml(s) {
 }
 
 function updateMicButton() {
-  micBtn.textContent = micEnabled ? '\u{1F3A4}' : '\u{1F507}';
   micBtn.className = micEnabled ? '' : 'muted';
+  micBtn.title = micEnabled ? 'Click to mute' : 'Click to unmute';
 }
 
 async function toggleConnection() {
@@ -875,6 +983,11 @@ async function toggleConnection() {
         switch (data.action) {
           case 'send_transcript':
             addTranscriptEntry(data.payload.role, data.payload.text);
+            // Trigger intro zoom-out on first agent message (the greeting)
+            if (!firstAgentMessage && data.payload.role === 'agent') {
+              firstAgentMessage = true;
+              endIntro();
+            }
             break;
 
           case 'heartbeat':
@@ -933,6 +1046,10 @@ async function toggleConnection() {
     connected = true;
 
     setStatus('Connected', 'connected');
+
+    // Update intro status
+    const introStatusEl = document.getElementById('introStatus');
+    if (introStatusEl) introStatusEl.innerHTML = 'Listening<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>';
 
     // Send initial checklist status to agent so it knows where the user is
     sendToAgent('checklist_status', getChecklistPayload());
@@ -1001,9 +1118,35 @@ function getChecklistPayload() {
 }
 
 // ================================================
+// INTRO ANIMATION
+// ================================================
+function endIntro() {
+  if (introFinished) return;
+  introFinished = true;
+  const overlay = document.getElementById('introOverlay');
+  // Phase 1: zoom out the logo
+  overlay.classList.add('zoom-out');
+  // Phase 2: fade out entire overlay, reveal app
+  setTimeout(() => {
+    overlay.classList.add('fade-out');
+    document.getElementById('mainApp').classList.add('visible');
+  }, 800);
+  // Phase 3: remove overlay from DOM
+  setTimeout(() => { overlay.remove(); }, 1600);
+}
+
+// Fallback: if agent doesn't speak within 8s, end intro anyway
+setTimeout(() => { if (!introFinished) endIntro(); }, 8000);
+
+// ================================================
 // INIT
 // ================================================
 renderChecklist();
+
+// Auto-connect on page load
+window.addEventListener('load', () => {
+  setTimeout(() => toggleConnection(), 500);
+});
 </script>
 </body>
 </html>
