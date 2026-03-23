@@ -1,4 +1,4 @@
-# Japan Life Navigator - Vocal Bridge Voice Agent
+# Jizo - Vocal Bridge Voice Agent
 
 ## Context
 Foreign professionals in Japan struggle with navigating tax, pension, healthcare, visa, banking, and housing systems. We're building a voice agent using Vocal Bridge that guides users step-by-step through these processes in simple English, personalizing advice based on their visa type, employment, and situation.
@@ -65,7 +65,7 @@ Write step-by-step guides for each of the 6 domains. These are our source materi
 
 ## Step 3: Create `prompt.txt`
 Distill the knowledge base guides into a structured system prompt with these sections:
-- **Identity**: "Japan Life Navigator" -- friendly guide for foreign professionals in Japan
+- **Identity**: "Jizo" -- friendly guide for foreign professionals in Japan
 - **Conversation approach**: Always ask clarifying questions first (visa type, employment type, city, how long in Japan), personalize advice, use simple language, give step-by-step instructions, warn about deadlines, recommend professionals for complex cases
 - **Domain knowledge** (6 areas):
   - **Tax**: Income tax vs residence tax, year-end adjustment vs final return, MyNumber, common deductions for foreigners, e-Tax
@@ -92,10 +92,10 @@ Distill the knowledge base guides into a structured system prompt with these sec
 ## Step 5: Create & Deploy Agent
 ```bash
 vb agent create \
-  --name "Japan Life Navigator" \
+  --name "Jizo" \
   --style Chatty \
   --prompt-file prompt.txt \
-  --greeting "Hi! I'm Japan Life Navigator, your guide to navigating life in Japan. I can help with taxes, pension, healthcare, visas, banking, and housing. To give you the best advice, it helps to know a bit about your situation -- like your visa type and whether you work for a Japanese company. What can I help you with today?" \
+  --greeting "Hi! I'm Jizo, your guide to navigating life in Japan. I can help with taxes, pension, healthcare, visas, banking, and housing. To give you the best advice, it helps to know a bit about your situation -- like your visa type and whether you work for a Japanese company. What can I help you with today?" \
   --deploy-targets web \
   --background-enabled true \
   --web-search-enabled true \
