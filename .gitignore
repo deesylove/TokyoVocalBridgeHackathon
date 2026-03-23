@@ -10,6 +10,9 @@ venv/
 .env.local
 .env.*.local
 
+# Telegram bot state (project-specific)
+.telegram/
+
 # Build
 dist/
 build/

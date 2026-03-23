@@ -1,0 +1,30 @@
+[
+  {
+    "name": "update_checklist",
+    "description": "Mark a step complete/incomplete. Payload: {step_id, completed}. IDs: immigration, address, mynumber, health, pension, bank, phone, extras.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "highlight_step",
+    "description": "Expand a step in the UI to show forms and docs. Payload: {step_id}. IDs: immigration, address, mynumber, health, pension, bank, phone, extras.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "checklist_status",
+    "description": "Current checklist state from the UI. Payload: {completed: [step_ids], pending: [step_ids]}. Sent on connect and when user asks next steps.",
+    "direction": "app_to_agent",
+    "behavior": "notify"
+  },
+  {
+    "name": "step_focused",
+    "description": "User expanded a step in the UI. Payload: {step_id, step_title}. Use as silent context for your next response.",
+    "direction": "app_to_agent",
+    "behavior": "notify"
+  },
+  {
+    "name": "checklist_query",
+    "description": "User clicked Ask Jizo on a step. Payload: {step_id, step_title, query}. Respond with step-by-step guidance for that step.",
+    "direction": "app_to_agent",
+    "behavior": "respond"
+  }
+]
