@@ -753,7 +753,9 @@ function updateProgress() {
   const total = STEPS.length;
   const done = completedSteps.size;
   const pct = Math.round((done / total) * 100);
-  document.getElementById('progressFill').style.width = pct + '%';
+  const fill = document.getElementById('progressFill');
+  fill.style.width = pct + '%';
+  fill.style.opacity = pct === 0 ? '0' : '1';
   document.getElementById('progressText').textContent = `${done} / ${total} completed`;
 }
 
