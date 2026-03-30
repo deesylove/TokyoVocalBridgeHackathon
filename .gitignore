@@ -25,6 +25,9 @@ build/
 *.swo
 .DS_Store
 
+# Orchestrator state
+orchestrator/state.db
+
 # Logs
 *.log
 npm-debug.log*
