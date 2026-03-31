@@ -9,6 +9,8 @@ from aiogram import Bot, Dispatcher
 
 from orchestrator import config
 from orchestrator.bot.handlers import register
+from orchestrator.pair.handlers import register_pair
+from orchestrator.pair.manager import PairManager
 from orchestrator.sessions.manager import SessionManager
 from orchestrator.storage.db import init_db
 from orchestrator.worktrees.manager import WorktreeManager
@@ -54,6 +56,11 @@ async def main() -> None:
     session_mgr = SessionManager(db=db, worktree_mgr=wt_mgr)
     await session_mgr.restore_from_db()
 
+    pair_mgr = PairManager(db=db, worktree_mgr=wt_mgr)
+
+    # Pair mode handlers registered FIRST — they take priority for message routing.
+    # If no pair session is active, messages fall through to split mode.
+    register_pair(dp, pair_mgr, bot)
     register(dp, session_mgr, bot)
 
     idle_task = asyncio.create_task(idle_checker(session_mgr, bot, chat_id=None))
