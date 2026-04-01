@@ -7,6 +7,7 @@ import logging
 import aiosqlite
 
 from orchestrator import config
+from orchestrator.pair.file_tracker import format_diff_summary, parse_tool_events
 from orchestrator.pair.session import PairMember, PairSession
 from orchestrator.sessions.claude_process import ClaudeProcess
 from orchestrator.worktrees.manager import WorktreeManager
@@ -15,9 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class PairManager:
-    def __init__(self, db: aiosqlite.Connection, worktree_mgr: WorktreeManager):
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        worktree_mgr: WorktreeManager | None = None,
+        *,
+        wt: WorktreeManager | None = None,
+    ):
         self.db = db
-        self.wt = worktree_mgr
+        self.wt = wt if wt is not None else worktree_mgr
         self._sessions: dict[int, PairSession] = {}  # chat_id -> PairSession
         self._processes: dict[int, ClaudeProcess] = {}  # chat_id -> ClaudeProcess
 
@@ -109,6 +116,46 @@ class PairManager:
         session.touch()
         session.total_cost_usd = proc.total_cost_usd
         return response
+
+    async def send_message_with_tracking(
+        self, chat_id: int, user_id: int, username: str, text: str
+    ) -> tuple[str, str]:
+        """Send message and return (response, diff_summary).
+
+        Also updates file ownership based on what Claude edited.
+        """
+        session = self._sessions.get(chat_id)
+        if not session:
+            raise ValueError("No pair session active.")
+
+        if not session.can_send(user_id):
+            driver = session.members.get(session.driver_id)
+            driver_name = f"@{driver.username}" if driver else "the driver"
+            return (
+                f"Only {driver_name} can send messages in driver mode. Use /both to enable everyone.",
+                "",
+            )
+
+        proc = self._processes.get(chat_id)
+        if not proc:
+            raise ValueError("Session has no process.")
+
+        attributed = f"[@{username}]: {text}"
+        response = await proc.send_message(attributed)
+        session.touch()
+        session.total_cost_usd = proc.total_cost_usd
+
+        # Parse file changes from tool events
+        changes = parse_tool_events(proc.last_tool_events, session.worktree_path)
+
+        # Update file ownership
+        for change in changes:
+            session.set_file_owner(change.filepath, user_id)
+
+        # Format diff summary
+        diff = format_diff_summary(changes, username)
+
+        return response, diff
 
     async def set_driver(self, chat_id: int, user_id: int) -> PairSession:
         session = self._sessions.get(chat_id)
