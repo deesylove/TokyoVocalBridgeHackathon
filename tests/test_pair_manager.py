@@ -62,3 +62,19 @@ async def test_send_message_warns_on_conflict(manager):
     response, diff = await manager.send_message_with_tracking(1, 200, "bob", "edit the API")
     # Should still work but diff should mention the conflict
     assert response == "Done!"
+
+
+@pytest.mark.asyncio
+async def test_handoff_with_context(manager):
+    proc = manager._processes[1]
+    proc.send_message = AsyncMock(return_value="Context: Built login endpoint. Tests pass. TODO: add rate limiting.")
+
+    session = manager.get_session(1)
+    session.set_file_owner("app/api.py", 100)
+    session.driver_id = 100
+    session.mode = "driver"
+
+    result = await manager.handoff_with_context(1, 100)
+    assert "Context:" in result
+    assert session.driver_id == 200  # handed off to bob
+    assert len(session.handoff_history) == 1

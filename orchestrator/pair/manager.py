@@ -191,6 +191,55 @@ class PairManager:
         session.mode = "driver"
         return session
 
+    async def handoff_with_context(self, chat_id: int, from_user: int) -> str:
+        """Hand off driver role with full context transfer."""
+        session = self._sessions.get(chat_id)
+        if not session:
+            raise ValueError("No pair session active.")
+
+        if session.driver_id != from_user:
+            raise ValueError("Only the current driver can handoff.")
+
+        others = [uid for uid in session.members if uid != from_user]
+        if not others:
+            raise ValueError("No one to hand off to.")
+
+        proc = self._processes.get(chat_id)
+        if not proc:
+            raise ValueError("Session has no process.")
+
+        from_member = session.members[from_user]
+        to_user = others[0]
+        to_member = session.members[to_user]
+
+        # Ask Claude to generate a context summary
+        context_prompt = (
+            "Generate a brief handoff summary for the next developer. Include:\n"
+            "1. What you've built so far\n"
+            "2. What's working / tests passing\n"
+            "3. What's left to do\n"
+            "4. Any gotchas or things to watch out for\n"
+            "Keep it concise — 5-8 lines max."
+        )
+        context_summary = await proc.send_message(context_prompt)
+
+        # Record the handoff
+        session.add_handoff(from_member.username, to_member.username, context_summary)
+
+        # Swap driver
+        session.set_driver(to_user)
+        session.mode = "driver"
+
+        # Notify Claude about the new driver
+        intro = (
+            f"[@{to_member.username}] is now the driver. "
+            f"Here's the handoff from @{from_member.username}:\n{context_summary}\n"
+            f"Files owned by @{from_member.username}: {', '.join(fp for fp, uid in session.file_ownership.items() if uid == from_user) or 'none'}"
+        )
+        await proc.send_message(intro)
+
+        return context_summary
+
     async def checkpoint(self, chat_id: int, message: str = "") -> str:
         session = self._sessions.get(chat_id)
         if not session:
