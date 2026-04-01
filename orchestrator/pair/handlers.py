@@ -9,19 +9,23 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from orchestrator.bot.formatters import chunk_message
+from orchestrator.pair.issues import GitHubIssues
 from orchestrator.pair.manager import PairManager
+from orchestrator import config
 
 logger = logging.getLogger(__name__)
 pair_router = Router()
 
 _pair_mgr: PairManager | None = None
 _bot_ref: Bot | None = None
+_issues: GitHubIssues | None = None
 
 
-def register_pair(dp, pair_mgr: PairManager, bot: Bot) -> None:
-    global _pair_mgr, _bot_ref
+def register_pair(dp, pair_mgr: PairManager, bot: Bot, issues: GitHubIssues | None = None) -> None:
+    global _pair_mgr, _bot_ref, _issues
     _pair_mgr = pair_mgr
     _bot_ref = bot
+    _issues = issues or GitHubIssues(repo_root=str(config.REPO_ROOT))
     dp.include_router(pair_router)
 
 
@@ -161,19 +165,103 @@ async def cmd_both(msg: Message) -> None:
     await msg.reply("Both mode ON. Everyone can talk to Claude.")
 
 
-@pair_router.message(Command("handoff"))
-async def cmd_handoff(msg: Message) -> None:
-    assert _pair_mgr
+@pair_router.message(Command("issues"))
+async def cmd_issues(msg: Message) -> None:
+    assert _pair_mgr and _issues
+
+    session = _pair_mgr.get_session(_chat_id(msg))
+    picked = {}
+    if session:
+        picked = {
+            num: session.members[uid].username
+            for num, uid in session.active_issues.items()
+            if uid in session.members
+        }
 
     try:
-        session = await _pair_mgr.handoff(_chat_id(msg), _user_id(msg))
+        board = await _issues.format_board(picked=picked)
+    except RuntimeError as e:
+        await msg.reply(f"Failed to fetch issues: {e}")
+        return
+
+    for chunk in chunk_message(board):
+        await msg.reply(chunk)
+
+
+@pair_router.message(Command("pick"))
+async def cmd_pick(msg: Message) -> None:
+    assert _pair_mgr
+
+    text = (msg.text or "").strip()
+    parts = text.split()
+    if len(parts) < 2:
+        await msg.reply("Usage: /pick #12 or /pick 12")
+        return
+
+    raw = parts[1].lstrip("#")
+    try:
+        issue_number = int(raw)
+    except ValueError:
+        await msg.reply(f"Invalid issue number: {parts[1]}")
+        return
+
+    try:
+        await _pair_mgr.pick_issue(
+            _chat_id(msg), issue_number, _user_id(msg), _username(msg)
+        )
     except ValueError as e:
         await msg.reply(str(e))
         return
 
-    driver = session.members.get(session.driver_id)
+    await msg.reply(f"@{_username(msg)} picked issue #{issue_number}")
+
+
+@pair_router.message(Command("done"))
+async def cmd_done(msg: Message) -> None:
+    assert _pair_mgr
+
+    session = _pair_mgr.get_session(_chat_id(msg))
+    if not session:
+        await msg.reply("No pair session active.")
+        return
+
+    uid = _user_id(msg)
+    user_issues = [num for num, assigned in session.active_issues.items() if assigned == uid]
+    if not user_issues:
+        await msg.reply("You don't have any active issues. Use /pick #N first.")
+        return
+
+    issue_number = user_issues[0]
+    await msg.reply(f"Completing issue #{issue_number}...")
+
+    try:
+        result = await _pair_mgr.complete_issue(_chat_id(msg), issue_number, uid)
+    except ValueError as e:
+        await msg.reply(str(e))
+        return
+
+    for chunk in chunk_message(f"Issue #{issue_number} completed.\n{result}"):
+        await msg.reply(chunk)
+
+
+@pair_router.message(Command("handoff"))
+async def cmd_handoff(msg: Message) -> None:
+    assert _pair_mgr
+
+    await msg.reply("Generating handoff context...")
+
+    try:
+        context = await _pair_mgr.handoff_with_context(_chat_id(msg), _user_id(msg))
+    except ValueError as e:
+        await msg.reply(str(e))
+        return
+
+    session = _pair_mgr.get_session(_chat_id(msg))
+    driver = session.members.get(session.driver_id) if session else None
     name = f"@{driver.username}" if driver else "?"
-    await msg.reply(f"Driver handed off to {name}.")
+
+    for chunk in chunk_message(f"Driver handed off to {name}.\n\nContext:\n{context}"):
+        await msg.reply(chunk)
 
 
 @pair_router.message(Command("checkpoint"))
@@ -224,7 +312,7 @@ async def route_pair_message(msg: Message) -> None:
     chat_id = _chat_id(msg)
     session = _pair_mgr.get_session(chat_id)
     if not session:
-        return  # No pair session — let the split mode handler try
+        return
 
     text = (msg.text or "").strip()
     if not text:
@@ -232,10 +320,10 @@ async def route_pair_message(msg: Message) -> None:
 
     uid = _user_id(msg)
     if uid not in session.members:
-        return  # Not a member, ignore
+        return
 
     try:
-        response = await _pair_mgr.send_message(
+        response, diff = await _pair_mgr.send_message_with_tracking(
             chat_id, uid, _username(msg), text
         )
     except ValueError as e:
@@ -248,3 +336,7 @@ async def route_pair_message(msg: Message) -> None:
 
     for chunk in chunk_message(f"[{session.task_name}]\n{response}"):
         await msg.reply(chunk)
+
+    # Post diff summary if files changed
+    if diff:
+        await msg.reply(diff)
