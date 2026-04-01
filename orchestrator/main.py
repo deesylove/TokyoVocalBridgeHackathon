@@ -10,6 +10,7 @@ from aiogram import Bot, Dispatcher
 from orchestrator import config
 from orchestrator.bot.handlers import register
 from orchestrator.pair.handlers import register_pair
+from orchestrator.pair.issues import GitHubIssues
 from orchestrator.pair.manager import PairManager
 from orchestrator.sessions.manager import SessionManager
 from orchestrator.storage.db import init_db
@@ -60,7 +61,8 @@ async def main() -> None:
 
     # Pair mode handlers registered FIRST — they take priority for message routing.
     # If no pair session is active, messages fall through to split mode.
-    register_pair(dp, pair_mgr, bot)
+    issues = GitHubIssues(repo_root=str(config.REPO_ROOT))
+    register_pair(dp, pair_mgr, bot, issues=issues)
     register(dp, session_mgr, bot)
 
     idle_task = asyncio.create_task(idle_checker(session_mgr, bot, chat_id=None))
