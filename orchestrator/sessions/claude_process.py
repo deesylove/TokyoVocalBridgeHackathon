@@ -36,7 +36,6 @@ class ClaudeProcess:
         self._output_callback = output_callback
         self._proc: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
-        self.last_tool_events: list[dict] = []
 
     async def send_message(self, text: str) -> str:
         """Send a message and return the assistant's text response."""
@@ -84,7 +83,6 @@ class ClaudeProcess:
     async def _read_response(self) -> str:
         assert self._proc and self._proc.stdout
         parts: list[str] = []
-        self.last_tool_events = []  # Reset for this invocation
 
         async for raw_line in self._proc.stdout:
             line = raw_line.decode().strip()
@@ -106,16 +104,11 @@ class ClaudeProcess:
 
             elif etype == "assistant":
                 content = event.get("message", {}).get("content", [])
-                has_tool_use = False
                 for block in content:
                     if block.get("type") == "text":
                         text = block.get("text", "")
                         if text:
                             parts.append(text)
-                    elif block.get("type") == "tool_use":
-                        has_tool_use = True
-                if has_tool_use:
-                    self.last_tool_events.append(event)
 
             elif etype == "result":
                 cost = event.get("total_cost_usd", 0)

@@ -36,9 +36,6 @@ class PairSession(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_activity: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     total_cost_usd: float = 0.0
-    file_ownership: dict[str, int] = Field(default_factory=dict)
-    active_issues: dict[int, int] = Field(default_factory=dict)
-    handoff_history: list[dict] = Field(default_factory=list)
 
     def add_member(self, user_id: int, username: str) -> PairMember:
         member = PairMember(user_id=user_id, username=username)
@@ -70,34 +67,6 @@ class PairSession(BaseModel):
 
     def touch(self) -> None:
         self.last_activity = datetime.now(timezone.utc)
-
-    def set_file_owner(self, filepath: str, user_id: int) -> None:
-        self.file_ownership[filepath] = user_id
-
-    def get_file_owner(self, filepath: str) -> int | None:
-        return self.file_ownership.get(filepath)
-
-    def check_conflicts(self, filepaths: list[str], user_id: int) -> list[tuple[str, int]]:
-        conflicts = []
-        for fp in filepaths:
-            owner = self.file_ownership.get(fp)
-            if owner is not None and owner != user_id:
-                conflicts.append((fp, owner))
-        return conflicts
-
-    def assign_issue(self, issue_number: int, user_id: int) -> None:
-        self.active_issues[issue_number] = user_id
-
-    def complete_issue(self, issue_number: int) -> None:
-        self.active_issues.pop(issue_number, None)
-
-    def add_handoff(self, from_user: str, to_user: str, summary: str) -> None:
-        self.handoff_history.append({
-            "from_user": from_user,
-            "to_user": to_user,
-            "summary": summary,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
 
     def member_list_str(self) -> str:
         lines = []
