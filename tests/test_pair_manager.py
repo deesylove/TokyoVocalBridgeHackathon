@@ -78,3 +78,25 @@ async def test_handoff_with_context(manager):
     assert "Context:" in result
     assert session.driver_id == 200  # handed off to bob
     assert len(session.handoff_history) == 1
+
+
+@pytest.mark.asyncio
+async def test_complete_issue_auto_commits(manager):
+    session = manager.get_session(1)
+    session.assign_issue(12, 100)
+
+    proc = manager._processes[1]
+    proc.send_message = AsyncMock(return_value="Committed: feat: add login API (#12)")
+
+    result = await manager.complete_issue(1, 12, 100)
+    assert "Committed" in result or "#12" in result
+    assert 12 not in session.active_issues
+
+
+@pytest.mark.asyncio
+async def test_complete_issue_wrong_user(manager):
+    session = manager.get_session(1)
+    session.assign_issue(12, 100)
+
+    with pytest.raises(ValueError, match="not assigned to you"):
+        await manager.complete_issue(1, 12, 200)

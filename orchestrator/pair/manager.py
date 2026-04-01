@@ -258,6 +258,56 @@ class PairManager:
         session.touch()
         return response
 
+    async def pick_issue(
+        self, chat_id: int, issue_number: int, user_id: int, username: str
+    ) -> None:
+        session = self._sessions.get(chat_id)
+        if not session:
+            raise ValueError("No pair session active.")
+
+        existing = session.active_issues.get(issue_number)
+        if existing is not None and existing != user_id:
+            other = session.members.get(existing)
+            other_name = f"@{other.username}" if other else "someone"
+            raise ValueError(f"Issue #{issue_number} already claimed by {other_name}.")
+
+        session.assign_issue(issue_number, user_id)
+
+        proc = self._processes.get(chat_id)
+        if proc:
+            await proc.send_message(
+                f"[@{username}] is now working on issue #{issue_number}. "
+                "Focus their requests on this issue."
+            )
+
+    async def complete_issue(
+        self, chat_id: int, issue_number: int, user_id: int
+    ) -> str:
+        session = self._sessions.get(chat_id)
+        if not session:
+            raise ValueError("No pair session active.")
+
+        assigned_to = session.active_issues.get(issue_number)
+        if assigned_to is None:
+            raise ValueError(f"Issue #{issue_number} is not active.")
+        if assigned_to != user_id:
+            raise ValueError(f"Issue #{issue_number} is not assigned to you.")
+
+        proc = self._processes.get(chat_id)
+        if not proc:
+            raise ValueError("Session has no process.")
+
+        commit_prompt = (
+            f"Stage all changed files and commit with message: "
+            f"'feat: complete issue #{issue_number} — {session.task_name}'. "
+            "Do NOT push. Just commit locally."
+        )
+        result = await proc.send_message(commit_prompt)
+        session.complete_issue(issue_number)
+        session.touch()
+
+        return result
+
     async def end_pair(self, chat_id: int) -> str:
         session = self._sessions.pop(chat_id, None)
         if not session:
